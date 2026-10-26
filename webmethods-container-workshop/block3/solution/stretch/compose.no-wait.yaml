@@ -1,0 +1,9 @@
+# =====================================================================
+# Stretch goal 2 - api WITHOUT "condition: service_healthy"
+#   podman-compose -f compose.yaml -f compose.no-wait.yaml up -d
+# Plain depends_on only orders the container STARTS: api starts as soon as
+# the db container exists, not when PostgreSQL accepts connections.
+# =====================================================================
+services:
+  api:
+    depends_on: !override [db]

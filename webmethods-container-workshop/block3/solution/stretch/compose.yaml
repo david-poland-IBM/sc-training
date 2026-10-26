@@ -1,0 +1,63 @@
+# =====================================================================
+# Block 3 capstone - STRETCH GOALS (reference solution)
+# = ../compose.yaml  +  the nginx "web" service from Exercise 3.7
+#
+#   cp .env.example .env
+#   podman-compose up -d --build
+#   curl http://localhost:3000      # api
+#   curl http://localhost:8080      # web
+#
+# stretch3-solution.sh runs all three stretch goals in order.
+# =====================================================================
+name: shop
+
+services:
+  db:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-shop}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: ${DB_NAME:-shop}
+    volumes:
+      - shop-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512m }
+    networks: [backend]
+
+  api:
+    build: ${API_DIR:-../../capstone/api}        # the capstone's api/ folder
+    image: localhost/workshop/shop-api:1.0
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: db
+      DB_USER: ${DB_USER:-shop}
+      DB_PASS: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_NAME: ${DB_NAME:-shop}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+  # Stretch goal 3: the web site from Exercise 3.7 in the same file.
+  # Needs neither db nor api, so it gets no depends_on and its own network.
+  web:
+    image: docker.io/library/nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ../../../block1/exercises/site:/usr/share/nginx/html:ro   # relative to THIS file
+    networks: [frontend]
+
+networks:
+  backend: {}
+  frontend: {}
+
+volumes:
+  shop-data: {}

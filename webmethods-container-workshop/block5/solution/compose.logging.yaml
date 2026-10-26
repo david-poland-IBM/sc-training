@@ -1,0 +1,101 @@
+# =====================================================================
+# Capstones 5–6 - LOGGING overlay: Graylog + Fluent Bit sidecar (REFERENCE SOLUTION)
+#
+#   podman-compose -f compose.yaml [-f compose.prod.yaml] -f compose.logging.yaml up -d
+#   ./graylog/create-gelf-input.sh          # once, after Graylog is up
+#   Graylog UI: http://localhost:9010  (admin / password whose SHA-256 is in .env)
+#
+# Why a Fluent Bit sidecar instead of "logging: driver: gelf"?
+#   * Podman does NOT support the gelf log driver (only journald, k8s-file, ...)
+#   * the gelf driver only ships stdout; MSR also writes audit/security logs
+#     to files under IntegrationServer/logs - the sidecar can tail those too
+# On a plain Docker Engine host the gelf driver remains a valid alternative
+# for stdout-only shipping (see the commented example under msr-1).
+# =====================================================================
+
+services:
+  # ---- MSR nodes: logs directory on a named volume shared with the sidecar
+  msr-1:
+    volumes:
+      - msr-1-logs:/opt/webmethods/IntegrationServer/logs
+    # Docker Engine only (not Podman):
+    # logging:
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://localhost:12201"
+    #     tag: "msr-1"
+  msr-2:
+    volumes:
+      - msr-2-logs:/opt/webmethods/IntegrationServer/logs
+
+  # ---- log shipper
+  fluent-bit:
+    image: ${FLUENTBIT_IMAGE:-docker.io/fluent/fluent-bit:3.1}
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - msr-1-logs:/msr-logs/msr-1:ro
+      - msr-2-logs:/msr-logs/msr-2:ro
+      - fluent-bit-db:/fluent-bit/db
+    depends_on:
+      graylog:
+        condition: service_started
+    networks: [logging]
+
+  # ---- Graylog stack (official images)
+  graylog-mongodb:
+    image: ${MONGO_IMAGE:-docker.io/library/mongo:7.0}
+    volumes:
+      - graylog-mongo:/data/db
+    networks: [logging]
+
+  graylog-datastore:
+    image: ${GRAYLOG_OPENSEARCH_IMAGE:-docker.io/opensearchproject/opensearch:2.15.0}
+    environment:
+      discovery.type: single-node
+      action.auto_create_index: "false"
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - graylog-datastore:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 18
+      start_period: 30s
+    networks: [logging]
+
+  graylog:
+    image: ${GRAYLOG_IMAGE:-docker.io/graylog/graylog:6.1}
+    environment:
+      GRAYLOG_PASSWORD_SECRET: ${GRAYLOG_PASSWORD_SECRET:?Set GRAYLOG_PASSWORD_SECRET (>=16 chars) in .env}
+      GRAYLOG_ROOT_PASSWORD_SHA2: ${GRAYLOG_ROOT_PASSWORD_SHA2:?Set GRAYLOG_ROOT_PASSWORD_SHA2 in .env}
+      GRAYLOG_HTTP_BIND_ADDRESS: 0.0.0.0:9000
+      GRAYLOG_HTTP_EXTERNAL_URI: http://localhost:9010/
+      GRAYLOG_ELASTICSEARCH_HOSTS: http://graylog-datastore:9200
+      GRAYLOG_MONGODB_URI: mongodb://graylog-mongodb:27017/graylog
+      GRAYLOG_ROOT_TIMEZONE: Europe/Zurich
+      TZ: Europe/Zurich
+    ports:
+      - "9010:9000"            # Graylog UI/API (9000 on the host is taken by UM)
+      - "12201:12201/udp"      # GELF UDP input
+    volumes:
+      - graylog-data:/usr/share/graylog/data/data
+    depends_on:
+      graylog-mongodb:
+        condition: service_started
+      graylog-datastore:
+        condition: service_healthy
+    networks: [logging]
+
+networks:
+  logging: {}
+
+volumes:
+  msr-1-logs: {}
+  msr-2-logs: {}
+  fluent-bit-db: {}
+  graylog-mongo: {}
+  graylog-datastore: {}
+  graylog-data: {}

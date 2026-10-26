@@ -1,0 +1,6 @@
+# Exercise 3.4 - single stage: the compiler ships to production
+FROM docker.io/library/eclipse-temurin:21-jdk
+WORKDIR /app
+COPY Hello.java .
+RUN javac Hello.java
+CMD ["java", "Hello"]

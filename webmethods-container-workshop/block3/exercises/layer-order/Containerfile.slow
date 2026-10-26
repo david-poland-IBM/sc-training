@@ -1,0 +1,7 @@
+# Exercise 3.2 - SLOW: the file that changes most is copied FIRST,
+# so every change also re-runs the package install below it.
+FROM docker.io/library/alpine:3.19
+COPY app.txt /app/app.txt
+# "sleep 5" stands in for a slow install step
+RUN apk add --no-cache curl jq && sleep 5
+CMD ["cat", "/app/app.txt"]

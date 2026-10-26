@@ -1,0 +1,50 @@
+# =====================================================================
+# Capstones 5–6 - PRODUCTION overlay (STARTER)
+#   podman-compose -f compose.yaml -f compose.prod.yaml up -d
+# Reference solution: ../solution/compose.prod.yaml
+# "!reset" needs podman-compose 1.6+ (or Docker Compose v2.24+).
+# =====================================================================
+
+# TODO 1: declare three file-based secrets:
+#   admin_password       -> ./secrets/admin_password.txt
+#   db_password          -> ./secrets/db_password.txt
+#   apigw_admin_password -> ./secrets/apigw_admin_password.txt
+# (create the files with ./scripts/make-secrets.sh --from-env)
+secrets: {}
+
+services:
+  postgres:
+    # TODO 2: attach db_password, remove POSTGRES_PASSWORD (!reset null)
+    #         and set POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+    environment: {}
+
+  msr-1:
+    # TODO 3: for BOTH msr-1 and msr-2
+    #   - secrets: [admin_password, db_password]
+    #   - entrypoint: ["/bin/sh", "/opt/workshop/secrets-entrypoint.sh"]
+    #     command:    ["/opt/webmethods/IntegrationServer/bin/startContainer.sh"]
+    #   - volumes (one bind mount):
+    #       ./scripts/secrets-entrypoint.sh      -> /opt/workshop/secrets-entrypoint.sh:ro
+    #         (the wrapper is not in the image, so the entrypoint above needs this mount)
+    #   - environment: ADMIN_PASSWORD: !reset null, DB_PASSWORD: !reset null, LAB_ENV: prod
+    #     (write !reset directly here - it does not survive a YAML merge key)
+    #   - deploy.resources.limits: cpus "2.0", memory 2g
+    #     and JAVA_MIN_MEM = JAVA_MAX_MEM = 1280M (~65% of the limit)
+    #   - restart: on-failure:5
+    #   - stop_grace_period: 90s  and  SAG_IS_SHUTDOWN_WAIT_TIME: "60"
+    environment: {}
+
+  loadbalancer:
+    # TODO 4: remove the published port (ports: !reset []) - API Gateway is the only entry point
+    restart: on-failure:5
+
+  apigateway:
+    # TODO 5: same secrets treatment for API Gateway
+    #   - secrets: [apigw_admin_password]
+    #   - environment: SAG_IS_ADMIN_PASSWORD: !reset null
+    #     (the wrapper exports /run/secrets/apigw_admin_password as SAG_IS_ADMIN_PASSWORD)
+    #   - entrypoint: ["/bin/sh", "/opt/workshop/secrets-entrypoint.sh"]
+    #     command:    ["/opt/softwareag/IntegrationServer/bin/startContainer.sh"]
+    #     (API Gateway stays on 11.1, so it keeps the old /opt/softwareag layout)
+    #   - volumes (one bind mount): ./scripts/secrets-entrypoint.sh -> /opt/workshop/secrets-entrypoint.sh:ro
+    environment: {}

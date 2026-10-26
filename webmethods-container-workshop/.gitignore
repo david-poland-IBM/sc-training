@@ -1,0 +1,8 @@
+# local environment files - never commit real values
+.env
+**/secrets/*.txt
+
+# workshop runtime artefacts
+**/msr-capstone2-logs/
+*.tar
+.DS_Store

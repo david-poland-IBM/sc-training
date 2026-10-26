@@ -1,0 +1,65 @@
+# =====================================================================
+# Capstone 5 - Multi-stage custom Microservices Runtime image (provided - multi-stage, explained on the Day 3 slides)
+#
+# Build context = repository root:
+#   podman build -f block5/capstone/msr/Containerfile \
+#     --build-arg APP_VERSION=1.0.0 -t localhost/swisscom-workshop/msr:1.0.0 .
+#
+# Stage 1 "builder": uses the JDK that ships inside the MSR image to compile
+#                    the package's Java services and to fail the build early
+#                    if the sources do not compile.
+# Stage 2 "runtime": a clean MSR image + JDBC driver + ONLY the compiled
+#                    package (no build leftovers).
+# =====================================================================
+ARG MSR_IMAGE=ibmwebmethods.azurecr.io/webmethods-microservicesruntime:12.1.0.3
+
+# ---------------------------------------------------------------- builder
+FROM ${MSR_IMAGE} AS builder
+USER root
+COPY packages/SwisscomLab /build/SwisscomLab
+RUN set -eu; \
+    JDK=/opt/webmethods/jvm/jvm/bin; \
+    CP="/opt/webmethods/IntegrationServer/lib/wm-isserver.jar:$(ls /opt/webmethods/common/lib/*.jar | tr '\n' ':')"; \
+    rm -rf /build/SwisscomLab/code/classes && mkdir -p /build/SwisscomLab/code/classes; \
+    $JDK/javac --release 21 -encoding UTF-8 -nowarn -cp "$CP" \
+        -d /build/SwisscomLab/code/classes \
+        $(find /build/SwisscomLab/code/source -name '*.java'); \
+    test -f /build/SwisscomLab/manifest.v3; \
+    find /build/SwisscomLab/ns -name node.ndf | grep -q .; \
+    chown -R 1724:1724 /build/SwisscomLab
+
+# ---------------------------------------------------------------- runtime
+FROM ${MSR_IMAGE}
+
+ARG PG_JDBC_VERSION=42.7.4
+# Keep APP_VERSION declared ABOVE the RUN below: a changed build-arg then invalidates
+# the cache from that RUN on. Declared lower (only feeding ENV/LABEL), Podman 5.2 reused
+# the cached ENV layer and shipped the OLD version (workbook Exercise 5.2).
+ARG APP_VERSION=1.0.0
+
+# Rarely changing layers first ...
+ADD --chown=1724:1724 \
+    https://repo1.maven.org/maven2/org/postgresql/postgresql/${PG_JDBC_VERSION}/postgresql-${PG_JDBC_VERSION}.jar \
+    /opt/webmethods/IntegrationServer/lib/jars/custom/postgresql-${PG_JDBC_VERSION}.jar
+COPY --chown=1724:1724 block5/capstone/msr/jdbc/PostgreSQL_JDBC_Driver.xml \
+     /opt/webmethods/IntegrationServer/config/jdbc/driver/PostgreSQL_JDBC_Driver.xml
+
+# Pre-create the logs directory owned by sagadmin. A named volume mounted here
+# (compose.logging.yaml) is then initialised with the right owner on Docker;
+# without it Docker creates the mount point as root and MSR cannot write logs.
+USER root
+RUN mkdir -p /opt/webmethods/IntegrationServer/logs && chown 1724:1724 /opt/webmethods/IntegrationServer/logs
+USER 1724
+
+# ... the frequently changing package last.
+COPY --from=builder --chown=1724:1724 /build/SwisscomLab /opt/webmethods/IntegrationServer/packages/SwisscomLab
+
+# Version is visible at runtime through application.properties ($env{APP_VERSION})
+ENV APP_VERSION=${APP_VERSION}
+LABEL org.opencontainers.image.title="swisscom-workshop-msr" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.base.name="ibmwebmethods.azurecr.io/webmethods-microservicesruntime:12.1.0.3"
+
+USER 1724
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=8 \
+  CMD curl -fs http://localhost:5555/health/readiness || exit 1

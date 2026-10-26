@@ -1,0 +1,73 @@
+# =====================================================================
+# Capstone 4 - Multi-container environment (STARTER)
+#   PostgreSQL  +  Universal Messaging  +  custom Microservices Runtime
+#
+#   cp .env.example .env          # then edit the passwords
+#   podman-compose config         # sanity-check before every "up"
+#   podman-compose up -d --build
+#   ./scripts/verify.sh
+# Reference solution: ../solution/compose.yaml
+# =====================================================================
+name: ${COMPOSE_PROJECT_NAME:-wm-block4}
+
+services:
+  # ---- Part 2: provided ------------------------------------------------
+  postgres:
+    image: ${POSTGRES_IMAGE:-docker.io/library/postgres:16}
+    environment:
+      POSTGRES_USER: ${DB_USER:-wmuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: labdb
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d labdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  # ---- Part 2: TODO - Universal Messaging --------------------------------
+  um:
+    image: ${UM_IMAGE:-ibmwebmethods.azurecr.io/universalmessaging-server:12.1.0.0}
+    environment:
+      REALM_NAME: umblock4
+      INIT_JAVA_MEM_SIZE: "512"
+      MAX_JAVA_MEM_SIZE: "1024"
+    ports:
+      - "9000:9000"
+    # TODO 2a: persist the UM data directory on the named volume "um-data"
+    #          (path: /opt/webmethods/UniversalMessaging/server/umserver/data)
+    # TODO 2b: add a healthcheck. UM answers GET http://localhost:9000/health/
+    #          with {"ServerStatus":"OK"} - curl is available in the image.
+    networks: [backend]
+
+  # ---- Part 3: TODO - custom Microservices Runtime ------------------------
+  msr:
+    build:
+      context: ../..                      # repository root - the image needs packages/
+      dockerfile: block4/capstone/msr/Containerfile  # TODO 3a: complete this Containerfile first
+    image: localhost/swisscom-workshop/msr:1.0
+    ports:
+      - "5555:5555"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      LAB_ENV: capstone4
+      # TODO 3b: DB_URL, DB_USER, DB_PASSWORD and UM_URL for application.properties.
+      #          Use the Compose SERVICE names (postgres, um) - never localhost.
+      JAVA_MIN_MEM: 512M
+      JAVA_MAX_MEM: 1024M
+    volumes:
+      - ./config/application.properties:/opt/webmethods/IntegrationServer/application.properties:ro
+    # TODO 3c: depends_on postgres AND um with condition: service_healthy
+    # TODO 3d: healthcheck against http://localhost:5555/health/readiness
+    #          (start_period: 60s - MSR needs ~30-75s for its first start)
+    networks: [backend]
+
+networks:
+  backend: {}
+
+volumes:
+  pg-data: {}
+  um-data: {}

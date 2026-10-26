@@ -1,0 +1,38 @@
+# =====================================================================
+# Capstone 4 - Custom Microservices Runtime image (REFERENCE SOLUTION)
+#
+# Build context = repository root, so the shared packages/ folder is visible:
+#   podman build -f block4/solution/msr/Containerfile -t localhost/swisscom-workshop/msr:1.0 .
+# (compose.yaml does this for you via the build: section)
+#
+# Layer order follows the "least -> most frequently changing" rule:
+#   1. IBM base image (pinned tag)          - changes with fix levels only
+#   2. JDBC driver jar + driver alias        - changes rarely
+#   3. Custom packages                       - changes on every build
+# Configuration (application.properties) and secrets are NOT baked in -
+# they are mounted / injected at container start.
+# =====================================================================
+ARG MSR_IMAGE=ibmwebmethods.azurecr.io/webmethods-microservicesruntime:12.1.0.3
+FROM ${MSR_IMAGE}
+
+ARG PG_JDBC_VERSION=42.7.4
+
+# 2a) PostgreSQL JDBC driver from Maven Central. lib/jars/custom is on the
+#     server classpath, so both the JDBC pool and package code can load it.
+ADD --chown=1724:1724 \
+    https://repo1.maven.org/maven2/org/postgresql/postgresql/${PG_JDBC_VERSION}/postgresql-${PG_JDBC_VERSION}.jar \
+    /opt/webmethods/IntegrationServer/lib/jars/custom/postgresql-${PG_JDBC_VERSION}.jar
+
+# 2b) JDBC driver alias referenced by jdbc.LabPostgres.driverAlias in application.properties
+COPY --chown=1724:1724 block4/solution/msr/jdbc/PostgreSQL_JDBC_Driver.xml \
+     /opt/webmethods/IntegrationServer/config/jdbc/driver/PostgreSQL_JDBC_Driver.xml
+
+# 3) Custom package(s) - last, because they change most often
+COPY --chown=1724:1724 packages/SwisscomLab /opt/webmethods/IntegrationServer/packages/SwisscomLab
+
+# The base image already runs as sagadmin (UID 1724) and exposes 5555/5543/9999.
+# Re-state the user explicitly so a later edit cannot silently switch to root.
+USER 1724
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=8 \
+  CMD curl -fs http://localhost:5555/health/readiness || exit 1

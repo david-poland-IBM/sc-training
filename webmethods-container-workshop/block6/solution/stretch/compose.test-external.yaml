@@ -1,0 +1,21 @@
+# =====================================================================
+# Stretch goal: Test-external overlay (REFERENCE SOLUTION)
+# Run from block5/capstone/ (or block5/solution/) on top of the base file:
+#   podman-compose -f compose.yaml -f ../../block6/solution/stretch/compose.test-external.yaml up -d
+# Changes ONLY what differs for the partner-facing test environment;
+# everything else is inherited from compose.yaml - no copy of the stack.
+# =====================================================================
+services:
+  msr-1:
+    environment:
+      LAB_ENV: test-external
+  msr-2:
+    environment:
+      LAB_ENV: test-external
+
+  loadbalancer:
+    ports: !reset []            # partners reach the APIs only through API Gateway
+
+  apigateway:
+    ports: !override           # replace the list (!reset would remove it entirely)
+      - "8443:5543"             # HTTPS runtime port only; no UI port published

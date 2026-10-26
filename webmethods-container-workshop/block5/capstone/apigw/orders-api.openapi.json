@@ -1,0 +1,41 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SwisscomLabOrders",
+    "version": "1.0",
+    "description": "Capstone 5 API: exposes the SwisscomLab services of the two MSR nodes (behind nginx) through API Gateway."
+  },
+  "servers": [
+    { "url": "http://loadbalancer:8080/invoke" }
+  ],
+  "paths": {
+    "/swisscom.lab.health/info": {
+      "get": {
+        "operationId": "getInfo",
+        "summary": "Which MSR node answered, plus environment and version",
+        "responses": { "200": { "description": "Node information" } }
+      }
+    },
+    "/swisscom.lab.db/listOrders": {
+      "get": {
+        "operationId": "listOrders",
+        "summary": "Latest orders from PostgreSQL",
+        "parameters": [
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": { "200": { "description": "Order list" } }
+      }
+    },
+    "/swisscom.lab.db/createOrder": {
+      "get": {
+        "operationId": "createOrder",
+        "summary": "Insert an order (GET for easy curl testing in the workshop)",
+        "parameters": [
+          { "name": "customer", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "amount", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Created order id" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# =====================================================================
+# Capstone 4 - Custom Microservices Runtime image (STARTER)
+# Build context = repository root (see build.context in ../compose.yaml).
+# Reference solution: ../../solution/msr/Containerfile
+#
+# Order the layers from "rarely changes" to "changes on every build".
+# =====================================================================
+ARG MSR_IMAGE=ibmwebmethods.azurecr.io/webmethods-microservicesruntime:12.1.0.3
+FROM ${MSR_IMAGE}
+
+ARG PG_JDBC_VERSION=42.7.4
+
+# TODO 1: add the PostgreSQL JDBC driver from Maven Central to
+#         /opt/webmethods/IntegrationServer/lib/jars/custom/
+#         URL: https://repo1.maven.org/maven2/org/postgresql/postgresql/${PG_JDBC_VERSION}/postgresql-${PG_JDBC_VERSION}.jar
+#         Hint: ADD --chown=1724:1724 <url> <target>   (the image runs as UID 1724)
+
+# TODO 2: copy the JDBC driver alias block4/capstone/msr/jdbc/PostgreSQL_JDBC_Driver.xml to
+#         /opt/webmethods/IntegrationServer/config/jdbc/driver/
+
+# TODO 3: copy the package folder packages/SwisscomLab to
+#         /opt/webmethods/IntegrationServer/packages/SwisscomLab
+
+# Do NOT copy application.properties or any password into the image -
+# configuration is mounted at runtime (see compose.yaml).
+USER 1724

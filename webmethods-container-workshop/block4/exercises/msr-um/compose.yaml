@@ -1,0 +1,47 @@
+# =====================================================================
+# Exercise 4.2 - stock MSR + Universal Messaging, wired by configuration only
+#   podman-compose up -d
+#   podman-compose ps        # um (healthy) first, then msr
+# =====================================================================
+name: msr-um
+
+services:
+  um:
+    image: ibmwebmethods.azurecr.io/universalmessaging-server:12.1.0.0
+    environment:
+      REALM_NAME: umwarmup
+      INIT_JAVA_MEM_SIZE: "512"
+      MAX_JAVA_MEM_SIZE: "1024"
+    volumes:
+      - um-data:/opt/webmethods/UniversalMessaging/server/umserver/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/health/ | grep -q '\"ServerStatus\":\"OK\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  msr:
+    image: ibmwebmethods.azurecr.io/webmethods-microservicesruntime:12.1.0.3
+    ports:
+      - "5555:5555"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Workshop-2026}
+      UM_URL: nsp://um:9000
+      JAVA_MIN_MEM: 512M
+      JAVA_MAX_MEM: 1024M
+    volumes:
+      - ./application.properties:/opt/webmethods/IntegrationServer/application.properties:ro
+    depends_on:
+      um:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:5555/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    stop_grace_period: 60s
+
+volumes:
+  um-data: {}

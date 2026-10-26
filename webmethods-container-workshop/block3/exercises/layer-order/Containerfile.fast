@@ -1,0 +1,6 @@
+# Exercise 3.2 - FAST: stable layers first, the changing file last.
+FROM docker.io/library/alpine:3.19
+# "sleep 5" stands in for a slow install step
+RUN apk add --no-cache curl jq && sleep 5
+COPY app.txt /app/app.txt
+CMD ["cat", "/app/app.txt"]

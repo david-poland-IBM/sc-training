@@ -1,0 +1,108 @@
+# =====================================================================
+# Capstones 5–6 - PRODUCTION overlay (REFERENCE SOLUTION)
+#   podman-compose -f compose.yaml -f compose.prod.yaml up -d --build
+#
+# What this overlay changes compared with compose.yaml:
+#   * secrets come from files (Compose secrets), never from "environment:" entries
+#   * scripts/secrets-entrypoint.sh exports /run/secrets/* into the process env,
+#     so application.prod.properties can keep using $env{...}
+#   * resource limits, JVM heap sized to the limit, restart policy
+#   * graceful shutdown: stop_grace_period > SAG_IS_SHUTDOWN_WAIT_TIME
+#   * the load balancer is no longer published - API Gateway is the only entry point
+# "!reset" needs podman-compose 1.6+ (or Docker Compose v2.24+). Secret files: scripts/make-secrets.sh
+# =====================================================================
+
+secrets:
+  admin_password:
+    file: ./secrets/admin_password.txt
+  db_password:
+    file: ./secrets/db_password.txt
+  apigw_admin_password:
+    file: ./secrets/apigw_admin_password.txt
+
+x-msr-prod: &msr-prod
+  secrets: [admin_password, db_password]
+  entrypoint: ["/bin/sh", "/opt/workshop/secrets-entrypoint.sh"]
+  command: ["/opt/webmethods/IntegrationServer/bin/startContainer.sh"]
+  volumes:
+    # same target as in compose.yaml -> replaces the non-prod properties file
+    - ./config/application.prod.properties:/opt/webmethods/IntegrationServer/application.properties:ro
+    # new target -> added: the wrapper used by "entrypoint" above (not in the image)
+    - ./scripts/secrets-entrypoint.sh:/opt/workshop/secrets-entrypoint.sh:ro
+  deploy:
+    resources:
+      limits:
+        cpus: "2.0"
+        memory: 2g
+      reservations:
+        memory: 1g
+  restart: on-failure:5
+  stop_grace_period: 90s
+
+# NOTE: "!reset" does NOT survive a YAML merge key (<<: *anchor) - it must be
+# written directly on each service, as below.
+x-msr-prod-env: &msr-prod-env
+  LAB_ENV: prod
+  JAVA_MIN_MEM: 1280M                # ~65% of the 2g limit, min = max avoids heap resizing
+  JAVA_MAX_MEM: 1280M
+  SAG_IS_SHUTDOWN_WAIT_TIME: "60"    # MSR waits up to 60s for running services (default 300s)
+
+services:
+  postgres:
+    secrets: [db_password]
+    environment:
+      POSTGRES_PASSWORD: !reset null
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    restart: on-failure:5
+    stop_grace_period: 30s
+
+  um:
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+    restart: on-failure:5
+    stop_grace_period: 60s
+
+  msr-1:
+    <<: *msr-prod
+    environment:
+      <<: *msr-prod-env
+      ADMIN_PASSWORD: !reset null    # removed - read from /run/secrets/admin_password
+      DB_PASSWORD: !reset null       # removed - read from /run/secrets/db_password
+
+  msr-2:
+    <<: *msr-prod
+    environment:
+      <<: *msr-prod-env
+      ADMIN_PASSWORD: !reset null    # removed - read from /run/secrets/admin_password
+      DB_PASSWORD: !reset null       # removed - read from /run/secrets/db_password
+
+  loadbalancer:
+    ports: !reset []                 # internal only in prod - reach it through API Gateway
+    restart: on-failure:5
+
+  apigateway:
+    secrets: [apigw_admin_password]
+    environment:
+      SAG_IS_ADMIN_PASSWORD: !reset null
+      JAVA_MIN_MEM: 1536M
+      JAVA_MAX_MEM: 1536M
+    # Same wrapper: /run/secrets/apigw_admin_password -> SAG_IS_ADMIN_PASSWORD
+    # API Gateway stays on 11.1 (no 12.1 image), so it keeps the /opt/softwareag layout.
+    entrypoint: ["/bin/sh", "/opt/workshop/secrets-entrypoint.sh"]
+    command: ["/opt/softwareag/IntegrationServer/bin/startContainer.sh"]
+    volumes:
+      # the only mount API Gateway needs: the same wrapper as the MSR nodes
+      - ./scripts/secrets-entrypoint.sh:/opt/workshop/secrets-entrypoint.sh:ro
+    # healthcheck: inherited from compose.yaml - it falls back to the secret file
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    restart: on-failure:5
+    stop_grace_period: 90s

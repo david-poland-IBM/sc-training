@@ -1,0 +1,18 @@
+# =====================================================================
+# Exercise 6.1 - one base file ...
+#   podman-compose config                                   # base only
+#   podman-compose -f compose.yaml -f compose.prod.yaml config   # base + prod
+# =====================================================================
+name: overlay-demo
+
+services:
+  web:
+    image: docker.io/library/nginx:1.27-alpine
+    ports:
+      - "8080:80"                 # dev convenience: published on the laptop
+      - "8443:443"
+    environment:
+      APP_ENV: dev
+      DEBUG: "true"
+    volumes:
+      - ../../../block1/exercises/site:/usr/share/nginx/html:ro

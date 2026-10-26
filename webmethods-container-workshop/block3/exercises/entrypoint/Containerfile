@@ -1,0 +1,4 @@
+# Exercise 3.3 - ENTRYPOINT is the executable, CMD the default arguments
+FROM docker.io/library/alpine:3.19
+ENTRYPOINT ["echo", "Greeting:"]
+CMD ["hello from the default CMD"]

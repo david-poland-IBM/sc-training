@@ -1,0 +1,24 @@
+# =====================================================================
+# Capstone 4 - STRETCH GOAL: a second network (REFERENCE SOLUTION)
+# Run from block4/solution/ on top of the base file:
+#   podman-compose -f compose.yaml -f stretch/compose.networks.yaml down
+#   podman-compose -f compose.yaml -f stretch/compose.networks.yaml up -d
+# (down first: network options apply only when the network is created)
+#
+#   frontend : msr only - where clients (later nginx / API Gateway) live
+#   backend  : msr + postgres + um - unchanged from compose.yaml
+# msr is the ONLY service on both networks.
+# =====================================================================
+services:
+  msr:
+    networks: [backend, frontend]    # overlay lists are merged: adds frontend
+
+networks:
+  # Without "isolate", Podman routes between bridge networks through the host:
+  # postgres is unresolvable from frontend by NAME but still reachable by IP.
+  # isolate=true (netavark) drops traffic between networks that both set it.
+  # Docker isolates bridge networks from each other by default.
+  backend:
+    driver_opts: { isolate: "true" }
+  frontend:
+    driver_opts: { isolate: "true" }

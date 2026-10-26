@@ -1,0 +1,15 @@
+# =====================================================================
+# Exercise 3.6 - a custom Microservices Runtime image
+# Build context = repository root (so packages/ is visible):
+#   podman build -f block3/exercises/msr-custom/Containerfile -t localhost/workshop/msr-custom:1.0 .
+# =====================================================================
+FROM ibmwebmethods.azurecr.io/webmethods-microservicesruntime:12.1.0.3
+
+LABEL org.opencontainers.image.title="msr-custom" \
+      org.opencontainers.image.version="1.0"
+
+# The image runs as sagadmin (UID 1724): files you add must belong to it
+COPY --chown=1724:1724 packages/SwisscomLab \
+     /opt/webmethods/IntegrationServer/packages/SwisscomLab
+
+USER 1724

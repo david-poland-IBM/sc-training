@@ -1,0 +1,67 @@
+# =====================================================================
+# GitLab CI/CD for the custom MSR image (REFERENCE EXAMPLE, Day 3)
+#   build -> scan -> push -> deploy-dev
+# Required CI/CD variables (masked/protected in GitLab):
+#   IBM_REGISTRY_USER, IBM_REGISTRY_TOKEN   - for ibmwebmethods.azurecr.io (base image pull)
+# GitLab provides CI_REGISTRY, CI_REGISTRY_IMAGE, CI_REGISTRY_USER, CI_REGISTRY_PASSWORD.
+# Assumes the repository layout of this workshop (packages/, block5/solution/).
+# =====================================================================
+stages: [build, scan, push, deploy]
+
+variables:
+  IMAGE: "$CI_REGISTRY_IMAGE/msr"
+  TAG: "$CI_COMMIT_SHORT_SHA"
+
+# Podman needs no daemon and no dind service. The runner must allow nested
+# containers (privileged, or a podman-in-podman capable executor).
+default:
+  image: quay.io/podman/stable:v5
+
+build-image:
+  stage: build
+  script:
+    - echo "$IBM_REGISTRY_TOKEN" | podman login ibmwebmethods.azurecr.io -u "$IBM_REGISTRY_USER" --password-stdin
+    - podman build -f block5/solution/msr/Containerfile
+        --build-arg APP_VERSION="${CI_COMMIT_TAG:-$TAG}"
+        -t "$IMAGE:$TAG" .
+    - podman save --format docker-archive "$IMAGE:$TAG" -o msr-image.tar
+  artifacts:
+    paths: [msr-image.tar]
+    expire_in: 1 hour
+
+scan-image:
+  stage: scan
+  image:
+    name: docker.io/aquasec/trivy:0.56.2
+    entrypoint: [""]
+  script:
+    # Hard gate: HIGH/CRITICAL findings with an available fix fail the pipeline
+    - trivy image --input msr-image.tar --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL --no-progress
+
+push-image:
+  stage: push
+  script:
+    - podman load -i msr-image.tar
+    - echo "$CI_REGISTRY_PASSWORD" | podman login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - podman push "$IMAGE:$TAG"
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        podman tag "$IMAGE:$TAG" "$IMAGE:$CI_COMMIT_TAG"
+        podman push "$IMAGE:$CI_COMMIT_TAG"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+deploy-dev:
+  stage: deploy
+  environment: dev
+  tags: [swisscom-dev-podman-host]        # runner on the Dev container host
+  script:
+    - cd block5/solution
+    - echo "$CI_REGISTRY_PASSWORD" | podman login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    # roll the nodes one at a time instead of "compose up" for all of them
+    - PROD=1 ./scripts/rolling-update.sh "$TAG"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual

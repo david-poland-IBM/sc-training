@@ -1,0 +1,13 @@
+# Exercise 3.1 - your first image
+FROM docker.io/library/nginx:1.27-alpine
+
+LABEL org.opencontainers.image.title="my-web" \
+      org.opencontainers.image.version="1.0"
+
+COPY index.html /usr/share/nginx/html/index.html
+
+EXPOSE 80
+
+# Podman keeps HEALTHCHECK only when you build with --format docker
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD wget -q --spider http://localhost/ || exit 1

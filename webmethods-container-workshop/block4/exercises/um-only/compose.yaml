@@ -1,0 +1,26 @@
+# =====================================================================
+# Exercise 4.1 - Universal Messaging on its own
+#   podman-compose up -d && podman-compose ps      # wait for (healthy)
+# =====================================================================
+name: um-warmup
+
+services:
+  um:
+    image: ibmwebmethods.azurecr.io/universalmessaging-server:12.1.0.0
+    environment:
+      REALM_NAME: umwarmup
+      INIT_JAVA_MEM_SIZE: "512"
+      MAX_JAVA_MEM_SIZE: "1024"
+    ports:
+      - "9000:9000"            # nsp/nhp protocol + /health/ (no web console)
+    volumes:
+      - um-data:/opt/webmethods/UniversalMessaging/server/umserver/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/health/ | grep -q '\"ServerStatus\":\"OK\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  um-data: {}

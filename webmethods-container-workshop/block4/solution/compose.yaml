@@ -1,0 +1,86 @@
+# =====================================================================
+# Capstone 4 - Multi-container environment (REFERENCE SOLUTION)
+#   PostgreSQL  +  Universal Messaging  +  custom Microservices Runtime
+#
+#   cp .env.example .env      # then edit the passwords
+#   podman-compose config     # sanity-check the resolved YAML
+#   podman-compose up -d --build
+#   ./scripts/verify.sh
+# Works unchanged with "podman compose".
+# =====================================================================
+name: ${COMPOSE_PROJECT_NAME:-wm-block4}
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-docker.io/library/postgres:16}
+    environment:
+      POSTGRES_USER: ${DB_USER:-wmuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: labdb
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d labdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  um:
+    image: ${UM_IMAGE:-ibmwebmethods.azurecr.io/universalmessaging-server:12.1.0.0}
+    environment:
+      REALM_NAME: umblock4
+      INIT_JAVA_MEM_SIZE: "512"
+      MAX_JAVA_MEM_SIZE: "1024"
+    ports:
+      - "9000:9000"          # nsp/nhp realm port - Enterprise Manager connects to nsp://localhost:9000
+    volumes:
+      - um-data:/opt/webmethods/UniversalMessaging/server/umserver/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/health/ | grep -q '\"ServerStatus\":\"OK\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [backend]
+
+  msr:
+    build:
+      context: ../..                              # repository root (needs packages/)
+      dockerfile: block4/solution/msr/Containerfile
+      args:
+        MSR_IMAGE: ${MSR_BASE_IMAGE:-ibmwebmethods.azurecr.io/webmethods-microservicesruntime:12.1.0.3}
+    image: localhost/swisscom-workshop/msr:1.0
+    ports:
+      - "5555:5555"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      LAB_ENV: capstone4
+      DB_URL: jdbc:postgresql://postgres:5432/labdb   # service name, not localhost
+      DB_USER: ${DB_USER:-wmuser}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      UM_URL: nsp://um:9000                          # service name, not localhost
+      JAVA_MIN_MEM: 512M
+      JAVA_MAX_MEM: 1024M
+    volumes:
+      - ./config/application.properties:/opt/webmethods/IntegrationServer/application.properties:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      um:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:5555/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks: [backend]
+
+networks:
+  backend: {}
+
+volumes:
+  pg-data: {}
+  um-data: {}

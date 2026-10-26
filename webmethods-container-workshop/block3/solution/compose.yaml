@@ -1,0 +1,45 @@
+# =====================================================================
+# Block 3 capstone - reference solution
+# Copy into ../capstone/ (next to api/ and .env) to run it.
+# =====================================================================
+name: shop
+
+services:
+  db:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-shop}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: ${DB_NAME:-shop}
+    volumes:
+      - shop-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512m }
+    networks: [backend]
+
+  api:
+    build: ./api
+    image: localhost/workshop/shop-api:1.0
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: db
+      DB_USER: ${DB_USER:-shop}
+      DB_PASS: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_NAME: ${DB_NAME:-shop}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+networks:
+  backend: {}
+
+volumes:
+  shop-data: {}

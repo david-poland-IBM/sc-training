@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<IDataXMLCoder version="1.0">
+  <record javaclass="com.wm.app.jdbc.JDBCBasicData">
+    <value name="alias">PostgreSQL_JDBC_Driver</value>
+    <value name="jdbcDriver">org.postgresql.Driver</value>
+    <number name="maxConns" type="java.lang.Integer">10</number>
+    <value name="description">PostgreSQL JDBC driver (org.postgresql:postgresql from Maven Central)</value>
+  </record>
+</IDataXMLCoder>

@@ -1,0 +1,11 @@
+# Exercise 3.4 - multi-stage: compile in the "kitchen", serve in the "dining room"
+FROM docker.io/library/eclipse-temurin:21-jdk AS builder
+WORKDIR /src
+COPY Hello.java .
+RUN javac Hello.java
+
+FROM docker.io/library/eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=builder /src/Hello.class .
+USER 1000
+CMD ["java", "Hello"]

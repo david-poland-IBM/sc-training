@@ -1,0 +1,12 @@
+# ... and a THIN overlay per environment. Only the differences live here.
+services:
+  web:
+    ports: !override
+      - "8443:443"                # replace the list: HTTPS only
+    environment:
+      APP_ENV: prod               # maps are MERGED key by key
+      DEBUG: !reset null          # remove a key the base file sets
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m }
+    restart: on-failure:5
